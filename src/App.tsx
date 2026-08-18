@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, User, Code, Database, LineChart, Network, CheckCircle2, Cpu, BrainCircuit, RefreshCw, ImagePlus, X, Image as ImageIcon, Mic, BookOpen, Trophy, Timer, Flame, Play, Pause, Layers } from 'lucide-react';
+import { Bot, Send, User, Code, Database, LineChart, Network, CheckCircle2, Cpu, BrainCircuit, RefreshCw, ImagePlus, X, Image as ImageIcon, Mic, BookOpen, Trophy, Timer, Flame, Play, Pause, Layers, Volume2, Download } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { supabase, getUser, updateXP } from './data/db';
 
 type Level = 1 | 2 | 3;
 
@@ -61,13 +62,120 @@ const FlashcardList = ({ data }: { data: {q: string, a: string}[] }) => {
   );
 };
 
+const MCQList = ({ data }: { data: {q: string, options: string[], correctIndex: number, explanation: string}[] }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [showExplanation, setShowExplanation] = useState(false);
+
+  if (!data || data.length === 0) return null;
+
+  const currentQuestion = data[currentIndex];
+
+  const handleOptionClick = (index: number) => {
+    if (selectedOption !== null) return; // Prevent changing answer
+    setSelectedOption(index);
+    setShowExplanation(true);
+  };
+
+  const nextQuestion = () => {
+    setSelectedOption(null);
+    setShowExplanation(false);
+    setCurrentIndex(prev => Math.min(prev + 1, data.length - 1));
+  };
+
+  return (
+    <div className="flex flex-col my-4 w-full bg-white border-2 border-slate-100 rounded-2xl p-6 shadow-sm">
+      <div className="flex items-center gap-2 mb-4 text-slate-800">
+        <CheckCircle2 className="w-5 h-5 text-blue-600" />
+        <h3 className="font-bold text-sm">اختبر معلوماتك: سؤال {currentIndex + 1} من {data.length}</h3>
+      </div>
+      
+      <p className="text-base font-medium text-slate-800 mb-6 leading-relaxed">{currentQuestion.q}</p>
+      
+      <div className="flex flex-col gap-3 mb-6">
+        {currentQuestion.options.map((opt, i) => {
+          let btnClass = "w-full text-right p-4 rounded-xl border transition-all text-sm font-medium ";
+          if (selectedOption === null) {
+            btnClass += "border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-blue-50 text-slate-700";
+          } else {
+            if (i === currentQuestion.correctIndex) {
+              btnClass += "border-green-500 bg-green-50 text-green-800 shadow-sm"; // Correct answer is always green
+            } else if (i === selectedOption) {
+              btnClass += "border-red-400 bg-red-50 text-red-800"; // Wrong selected answer is red
+            } else {
+              btnClass += "border-slate-100 bg-slate-50 text-slate-400 opacity-50"; // Other unselected options fade
+            }
+          }
+
+          return (
+            <button key={i} onClick={() => handleOptionClick(i)} className={btnClass} disabled={selectedOption !== null}>
+              <span className="inline-block w-6 text-slate-400">{i + 1}.</span> {opt}
+            </button>
+          );
+        })}
+      </div>
+
+      {showExplanation && (
+        <div className={\`p-4 rounded-xl text-sm leading-relaxed mb-4 \${selectedOption === currentQuestion.correctIndex ? 'bg-green-100 text-green-900 border border-green-200' : 'bg-amber-50 text-amber-900 border border-amber-200'}\`}>
+          <strong className="block mb-1">{selectedOption === currentQuestion.correctIndex ? '✅ إجابة صحيحة!' : '❌ إجابة خاطئة!'}</strong>
+          <span className="font-medium text-xs">الشرح: </span> {currentQuestion.explanation}
+        </div>
+      )}
+
+      {selectedOption !== null && currentIndex < data.length - 1 && (
+        <button onClick={nextQuestion} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm shadow-md hover:bg-blue-700 transition-colors self-end">
+          السؤال التالي
+        </button>
+      )}
+    </div>
+  );
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chat' | 'code'>('chat');
   const [sidebarTab, setSidebarTab] = useState<'system' | 'profile'>('profile');
-  const [xp, setXp] = useState(240);
-  const [streak, setStreak] = useState(3);
+  const [xp, setXp] = useState(0);
+  const [streak, setStreak] = useState(0);
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(25 * 60);
+  
+  const [session, setSession] = useState<any>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchUserData(session.user.id);
+      setIsAuthLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchUserData(session.user.id);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchUserData = async (userId: string) => {
+    const data = await getUser(userId);
+    if (data) {
+      setXp(data.xp || 0);
+      setStreak(data.streak || 0);
+    }
+  };
+
+  const handleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+    });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
 
   useEffect(() => {
     let interval: any = null;
@@ -165,7 +273,11 @@ export default function App() {
       let earnedXp = 10;
       if (data.isComplex) earnedXp += 15;
       if (data.retrievedTopics && data.retrievedTopics.length > 0) earnedXp += 5;
+      
       setXp(prev => prev + earnedXp);
+      if (session?.user?.id) {
+        updateXP(session.user.id, earnedXp);
+      }
 
     } catch (error) {
       console.error(error);
@@ -188,6 +300,23 @@ export default function App() {
     } catch (error) {
       console.error("Failed to clear memory");
     }
+  };
+
+  const handleExport = () => {
+    let content = "# ملخص محادثة ليرنوف - رفيق\n\n";
+    messages.forEach(msg => {
+      content += msg.role === 'user' ? "## أنت:\n" : "## رفيق:\n";
+      content += msg.text + "\n\n";
+    });
+    
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'Learnov_Session.md';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const pythonCode = `import os
@@ -311,6 +440,7 @@ if __name__ == "__main__":
 `;
 
   const renderMessageContent = (text: string) => {
+    // Check for Flashcards
     const flashcardsMatch = text.match(/\[FLASHCARDS\]([\s\S]*?)\[\/FLASHCARDS\]/);
     if (flashcardsMatch) {
       try {
@@ -331,12 +461,58 @@ if __name__ == "__main__":
         console.error('Failed to parse flashcards', e);
       }
     }
+
+    // Check for MCQ
+    const mcqMatch = text.match(/\[MCQ\]([\s\S]*?)\[\/MCQ\]/);
+    if (mcqMatch) {
+      try {
+        const jsonStr = mcqMatch[1].trim();
+        const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+        const mcqData = JSON.parse(cleanJson);
+        const textBefore = text.split(/\[MCQ\][\s\S]*?\[\/MCQ\]/)[0].trim();
+        const textAfter = text.split(/\[MCQ\][\s\S]*?\[\/MCQ\]/)[1]?.trim();
+        
+        return (
+          <>
+            {textBefore && <div className="markdown-body prose prose-slate prose-sm rtl:prose-invert max-w-none mb-4"><Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{textBefore}</Markdown></div>}
+            <MCQList data={mcqData} />
+            {textAfter && <div className="markdown-body prose prose-slate prose-sm rtl:prose-invert max-w-none mt-4"><Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{textAfter}</Markdown></div>}
+          </>
+        );
+      } catch (e) {
+        console.error('Failed to parse MCQ', e);
+      }
+    }
+
     return (
       <div className="markdown-body prose prose-slate prose-sm rtl:prose-invert max-w-none">
         <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{text}</Markdown>
       </div>
     );
   };
+
+  if (isAuthLoading) {
+    return <div className="h-screen w-full flex items-center justify-center bg-slate-50 font-bold text-slate-500">جاري التحقق من الحساب...</div>;
+  }
+
+  if (!session) {
+    return (
+      <div className="h-screen w-full bg-slate-50 flex items-center justify-center font-sans" dir="rtl">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-3xl mx-auto mb-6">L</div>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">ليرنوف | رفيق</h1>
+          <p className="text-slate-500 mb-8">قم بتسجيل الدخول بحساب جوجل لبدء تجربة التعلم السقراطي، وحفظ تقدمك الدراسي السحابي.</p>
+          <button 
+            onClick={handleLogin}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2"
+          >
+            <User className="w-5 h-5" />
+            تسجيل الدخول باستخدام جوجل
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-full bg-slate-50 flex flex-col font-sans overflow-hidden" dir="rtl">
@@ -367,6 +543,18 @@ if __name__ == "__main__":
             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
             النظام متصل
           </div>
+          <div className="h-4 w-[1px] bg-slate-200 hidden md:block"></div>
+          {session?.user && (
+            <div className="flex items-center gap-3">
+              {session.user.user_metadata?.avatar_url && (
+                <img src={session.user.user_metadata.avatar_url} alt="Profile" className="w-8 h-8 rounded-full border border-slate-200" />
+              )}
+              <span className="font-semibold text-xs text-slate-700 hidden sm:block">{session.user.user_metadata?.full_name || 'طالب ليرنوف'}</span>
+              <button onClick={handleLogout} className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded transition-colors font-bold">
+                خروج
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -451,11 +639,18 @@ if __name__ == "__main__":
                       <p className="text-center text-[10px] text-slate-500 font-medium leading-relaxed">التركيز العميق في فترات متقطعة يساعدك على استيعاب المعلومات بشكل أسرع وأكثر ثباتاً.</p>
                     </div>
 
-                    <div className="mt-auto pt-4 flex justify-between items-center border-t border-slate-200">
-                      <span className="text-[10px] text-slate-500 font-medium">حجم الذاكرة الحالية للسياق</span>
-                      <button onClick={handleClearMemory} className="text-[10px] text-red-500 hover:text-red-700 font-bold flex items-center gap-1 bg-red-50 px-2 py-1 rounded-md transition-colors">
-                        <RefreshCw className="w-3 h-3" /> مسح السياق
-                      </button>
+                    <div className="mt-auto pt-4 flex flex-col gap-2 border-t border-slate-200">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-slate-500 font-medium">الذاكرة والمحتوى</span>
+                        <div className="flex gap-2">
+                          <button onClick={handleExport} className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md transition-colors" title="تصدير المحادثة لملف Markdown/PDF">
+                            <Download className="w-3 h-3" /> تصدير 
+                          </button>
+                          <button onClick={handleClearMemory} className="text-[10px] text-red-500 hover:text-red-700 font-bold flex items-center gap-1 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-md transition-colors" title="مسح السياق الحالي">
+                            <RefreshCw className="w-3 h-3" /> مسح
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -569,7 +764,27 @@ if __name__ == "__main__":
                         {msg.role === 'user' ? (
                           <p className="whitespace-pre-wrap">{msg.text}</p>
                         ) : (
-                          renderMessageContent(msg.text)
+                          <div className="relative">
+                            {renderMessageContent(msg.text)}
+                            <button
+                              onClick={() => {
+                                const synth = window.speechSynthesis;
+                                if (synth.speaking) {
+                                  synth.cancel();
+                                  return;
+                                }
+                                const cleanText = msg.text.replace(/\\[.*\\]/g, '').replace(/[\#\*\_]/g, '');
+                                const utterance = new SpeechSynthesisUtterance(cleanText);
+                                utterance.lang = 'ar-SA';
+                                utterance.rate = 0.9;
+                                synth.speak(utterance);
+                              }}
+                              className="absolute -left-2 -top-2 p-1.5 bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200 transition-colors shadow-sm"
+                              title="استمع للإجابة"
+                            >
+                              <Volume2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         )}
                       </div>
 

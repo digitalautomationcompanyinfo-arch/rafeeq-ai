@@ -6,6 +6,8 @@ import { GoogleGenAI } from "@google/genai";
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import OpenAI from "openai";
 import { knowledgeBase } from "./src/data/knowledge.ts";
+import { OAuth2Client } from "google-auth-library";
+import { upsertUser, getUser, updateXP } from "./src/data/db.ts";
 
 const app = express();
 const PORT = 3000;
@@ -250,23 +252,31 @@ const PORT = 3000;
       let usedModels = ["Google Gemini"];
       const queryText = message || "قم بتحليل هذه الصورة المرفقة واستنتج المطلوب.";
       
-      let baseInstruction = "أسمك 'رفيق' (Rafeeq)، أنت المساعد الذكي المتقدم في منصة 'ليرنوف' (Learnov). مهتمك مساعدة الطلاب.\n" +
-        "هام: إذا طلب الطالب (بطاقات استذكار) أو (Flashcards)، يجب عليك استخراج المفاهيم وإرجاعها حصراً بهذا التنسيق الحرفي (بدون علامات Markdown خارج البلوك):\n" +
-        "[FLASHCARDS]\n[{\"q\": \"السؤال الأول أو المصطلح\", \"a\": \"الجواب أو التعريف\"}]\n[/FLASHCARDS]";
+      let baseInstruction = "أنت 'رفيق' (Rafeeq)، المساعد الذكي والأخ الأكبر للطلاب في منصة 'ليرنوف' (Learnov).\n" +
+        "شخصيتك: أنت معلم ملهم، ذكي، داعم. في المسائل المعقدة، استخدم 'الطريقة السقراطية' (Socratic Method). لا تعطِ الإجابة المباشرة فوراً، بل قدم تلميحات ووجه الطالب خطوة بخطوة ليصل للحل بنفسه.\n\n" +
+        "تنسيقات الإخراج الإلزامية:\n" +
+        "1. إذا طلب الطالب (بطاقات استذكار) أو (Flashcards)، يجب إرجاعها حصراً بهذا التنسيق الحرفي:\n" +
+        "[FLASHCARDS]\n[{\"q\": \"السؤال/المصطلح\", \"a\": \"الجواب/التعريف\"}]\n[/FLASHCARDS]\n\n" +
+        "2. إذا طلب الطالب (اختبار قصير) أو (MCQ)، يجب إرجاعها حصراً بهذا التنسيق الحرفي:\n" +
+        "[MCQ]\n[{\"q\": \"نص السؤال\", \"options\": [\"خيار 1\", \"خيار 2\", \"خيار 3\", \"خيار 4\"], \"correctIndex\": 0, \"explanation\": \"شرح الجواب\"}]\n[/MCQ]\n\n" +
+        "ملاحظات: استخدم تنسيق Markdown، واستخدم صيغة LaTeX للمعادلات الرياضية.";
 
       
-      const frustrationKeywords = ['صعب', 'لم افهم', 'معقد', 'مستحيل', 'كيف', 'لا استطيع'];
+      const frustrationKeywords = ['صعب', 'لم افهم', 'معقد', 'مستحيل', 'كيف', 'لا استطيع', 'لا أفهم', 'شرح'];
       if (message && frustrationKeywords.some(kw => message.includes(kw))) {
-        baseInstruction += " [تنبيه: الطالب يشعر بالإحباط، كن متعاطفاً وبسط الشرح].";
+        baseInstruction += "\n\n[تنبيه هام: الطالب يشعر بالإحباط أو يواجه صعوبة. كن شديد التعاطف، استخدم لغة محفزة جداً (مثل: 'لا تقلق، هذا طبيعي..')، وبسّط الشرح لأقصى درجة ممكنة مع أمثلة من واقع الحياة].";
       }
 
       // removed
       // removed
       if (message) {
+        let matchCount = 0;
         for (const [key, val] of Object.entries(knowledgeBase)) {
           if (message.includes(key)) {
             retrievedContext += val + "\n";
             retrievedTopics.push(key);
+            matchCount++;
+            if (matchCount >= 3) break; // Limit context to avoid prompt explosion
           }
         }
       }
@@ -296,16 +306,39 @@ const PORT = 3000;
 
           ${image ? "ملاحظة: لقد قام الطالب برفع صورة، وقد قمت (Gemini) برؤيتها ضمن سياق المحادثة الأصلي." : ""}
 
-          قم بفلترة هذه المعلومات، تحقق من صحتها، واكتب إجابة نهائية متكاملة ودقيقة للطالب. لا تذكر أسماء النماذج في ردك النهائي.
+          قم بفلترة هذه المعلومات، تحقق من صحتها، واكتب إجابة نهائية متكاملة ودقيقة للطالب بأسلوبك (أخ أكبر ومعلم داعم).
+          تذكر: لا تذكر أسماء النماذج في ردك. التزم تماماً بتعليمات التنسيق (MCQ/Flashcards) إذا طلبها الطالب.
         `;
 
-        const response = await generateWithFallback({
-          
+        const draftResponse = await generateWithFallback({
           contents: chatHistory.slice(0, -1).concat([{ role: "user", parts: [{ text: synthesisPrompt }] }]),
           config: { temperature: 0.4 } 
         });
 
-        finalResponseText = response.text || "";
+        const draftText = draftResponse.text || "";
+
+        const reflectionPrompt = `
+          تعليمات النظام: ${baseInstruction}
+          
+          قمت للتو بكتابة هذه المسودة كإجابة للطالب:
+          """
+          ${draftText}
+          """
+          
+          مهمتك الآن هي النقد الذاتي (Self-Reflection) وتحسين المسودة:
+          1. إذا كانت المسألة معقدة: هل الإجابة سقراطية وتوجه الطالب أم أنها أعطت الحل المباشر؟ (عدلها لتكون سقراطية أكثر).
+          2. هل التنسيق صحيح 100% (إذا كان المطلوب Flashcards أو MCQ)؟
+          3. هل النبرة داعمة، واضحة، وخالية من أسماء نماذج الذكاء الاصطناعي؟
+          
+          اكتب الإجابة النهائية المحسنة الآن (النتيجة النهائية فقط بدون أي مقدمات عن النقد).
+        `;
+
+        const finalResponse = await generateWithFallback({
+          contents: chatHistory.slice(0, -1).concat([{ role: "user", parts: [{ text: reflectionPrompt }] }]),
+          config: { temperature: 0.3 } 
+        });
+
+        finalResponseText = finalResponse.text || "";
 
       } else if (level === 2) {
         // تفعيل الشبكة المجانية ومفتوحة المصدر (Free / Open Source Network)
@@ -334,7 +367,8 @@ const PORT = 3000;
 
           ${image ? "ملاحظة: لقد قام الطالب برفع صورة، وقد قمت (Gemini) برؤيتها ضمن سياق المحادثة الأصلي." : ""}
 
-          قم بفلترة هذه المعلومات، تحقق من صحتها، واكتب إجابة نهائية متكاملة ودقيقة للطالب. لا تذكر أسماء النماذج في ردك النهائي.
+          قم بفلترة هذه المعلومات، تحقق من صحتها، واكتب إجابة نهائية متكاملة ودقيقة للطالب بأسلوبك (أخ أكبر ومعلم داعم).
+          تذكر: لا تذكر أسماء النماذج في ردك. التزم تماماً بتعليمات التنسيق (MCQ/Flashcards) إذا طلبها الطالب.
         `;
 
         const response = await generateWithFallback({
