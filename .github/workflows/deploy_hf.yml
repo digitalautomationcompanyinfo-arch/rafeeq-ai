@@ -1,0 +1,40 @@
+name: Deploy to Hugging Face Spaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'llm_pipeline/hf_space/**'
+
+jobs:
+  deploy-to-huggingface:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Deploy to Hugging Face Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          pip install huggingface_hub
+          python - <<'EOF'
+          from huggingface_hub import HfApi
+          import os
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          
+          # Replace with your HF username and space name
+          REPO_ID = "YOUR_HF_USERNAME/arabic-ai-mvp"
+          
+          api.upload_folder(
+              folder_path="llm_pipeline/hf_space",
+              repo_id=REPO_ID,
+              repo_type="space",
+              commit_message="Deploy: Update app from GitHub Actions"
+          )
+          print(f"✅ Deployed to https://huggingface.co/spaces/{REPO_ID}")
+          EOF

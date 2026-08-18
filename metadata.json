@@ -1,0 +1,6 @@
+{
+  "name": "Rafeeq AI",
+  "description": "Rafeeq: The complete AI tutor system with multi-model orchestration for the Learnov platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

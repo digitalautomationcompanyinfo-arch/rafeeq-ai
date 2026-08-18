@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arabic AI MVP</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:'Segoe UI',Tahoma,Arial,sans-serif;
+      background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
+      min-height:100vh;display:flex;flex-direction:column;
+      align-items:center;padding:20px;color:#f0f0f0;
+    }
+    .header{text-align:center;padding:30px 20px 16px;max-width:750px;width:100%}
+    .header h1{font-size:2rem;font-weight:700;margin-bottom:8px}
+    .header p{color:#aaa;font-size:.9rem}
+    .badge{display:inline-block;background:#10b98122;border:1px solid #10b98188;
+      color:#34d399;padding:4px 14px;border-radius:20px;font-size:.8rem;margin-top:10px}
+
+    .chat-container{
+      background:#1e1e2e;border-radius:16px;border:1px solid #ffffff18;
+      width:100%;max-width:750px;display:flex;flex-direction:column;
+      height:520px;margin-top:14px;overflow:hidden;box-shadow:0 20px 60px #0006;
+    }
+    .chat-header{
+      padding:12px 20px;background:#ffffff08;border-bottom:1px solid #ffffff10;
+      display:flex;align-items:center;gap:10px;font-size:.9rem;color:#ccc;
+    }
+    .dot{width:10px;height:10px;border-radius:50%;background:#10b981;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+    #messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+    #messages::-webkit-scrollbar{width:4px}
+    #messages::-webkit-scrollbar-thumb{background:#ffffff20;border-radius:4px}
+
+    .msg{max-width:82%;padding:12px 16px;border-radius:16px;line-height:1.65;
+      font-size:.92rem;animation:fadeIn .25s ease;white-space:pre-wrap}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    .msg.user{background:linear-gradient(135deg,#6366f1,#8b5cf6);
+      align-self:flex-start;border-bottom-right-radius:4px}
+    .msg.bot{background:#ffffff0f;border:1px solid #ffffff15;
+      align-self:flex-end;border-bottom-left-radius:4px}
+    .msg.typing{opacity:.6;font-style:italic}
+
+    .input-area{padding:14px;background:#ffffff06;border-top:1px solid #ffffff10;
+      display:flex;gap:10px;align-items:flex-end}
+    textarea{flex:1;background:#ffffff0d;border:1px solid #ffffff20;border-radius:12px;
+      padding:12px 16px;color:#f0f0f0;font-size:.92rem;font-family:inherit;
+      resize:none;max-height:120px;min-height:46px;outline:none;transition:border-color .2s}
+    textarea:focus{border-color:#6366f1}
+    textarea::placeholder{color:#666}
+    button#send{background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;
+      border-radius:12px;padding:12px 20px;color:#fff;font-size:1.1rem;
+      cursor:pointer;transition:opacity .2s,transform .1s;min-width:50px}
+    button#send:hover{opacity:.88;transform:scale(1.04)}
+    button#send:disabled{opacity:.4;cursor:not-allowed}
+
+    .controls{width:100%;max-width:750px;display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
+    .control-card{background:#1e1e2e;border:1px solid #ffffff15;border-radius:12px;
+      padding:12px 16px;flex:1;min-width:160px}
+    .control-card label{font-size:.78rem;color:#888;display:block;margin-bottom:6px}
+    .control-card input[type=range]{width:100%;accent-color:#6366f1}
+    .control-card input[type=text]{width:100%;background:#0d0d1a;border:1px solid #ffffff20;
+      border-radius:8px;padding:6px 10px;color:#f0f0f0;font-size:.85rem}
+    .val{font-size:.85rem;color:#a78bfa;float:left}
+
+    .examples{width:100%;max-width:750px;margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+    .ex-btn{background:#ffffff08;border:1px solid #ffffff18;border-radius:20px;
+      padding:7px 14px;color:#ccc;font-size:.82rem;cursor:pointer;
+      transition:all .2s;font-family:inherit}
+    .ex-btn:hover{background:#6366f120;border-color:#6366f1;color:#a78bfa}
+
+    .info-bar{width:100%;max-width:750px;margin-top:12px;background:#1e1e2e;
+      border:1px solid #ffffff12;border-radius:12px;padding:10px 18px;
+      font-size:.8rem;color:#666;display:flex;gap:20px;flex-wrap:wrap}
+    .info-bar b{color:#a78bfa}
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🤖 Arabic AI MVP</h1>
+  <p>نموذج لغوي مُدرَّب على بيانات مخصصة — Qwen2.5-14B + QLoRA</p>
+  <span class="badge">⚡ مجاني — بدون توكن — يعمل الآن</span>
+</div>
+
+<div class="chat-container">
+  <div class="chat-header">
+    <div class="dot"></div>
+    <span>المساعد الذكي العربي — Powered by Pollinations AI</span>
+  </div>
+  <div id="messages">
+    <div class="msg bot">مرحباً! 👋 أنا مساعدك الذكي. اسألني أي شيء بالعربية أو الإنجليزية وسأجيبك فوراً.</div>
+  </div>
+  <div class="input-area">
+    <textarea id="inp" placeholder="اكتب سؤالك هنا..." rows="1"></textarea>
+    <button id="send" onclick="send()">➤</button>
+  </div>
+</div>
+
+<div class="examples">
+  <button class="ex-btn" onclick="fill(this)">ما فوائد الذكاء الاصطناعي في الصحة؟</button>
+  <button class="ex-btn" onclick="fill(this)">اشرح QLoRA بطريقة مبسّطة</button>
+  <button class="ex-btn" onclick="fill(this)">اكتب نصاً تسويقياً لتطبيق AI</button>
+  <button class="ex-btn" onclick="fill(this)">ما الفرق بين Fine-tuning و RAG؟</button>
+</div>
+
+<div class="controls">
+  <div class="control-card">
+    <label>الحد الأقصى <span class="val" id="tv">512</span></label>
+    <input type="range" min="64" max="1024" value="512" step="64" oninput="tv.textContent=this.value" id="mt">
+  </div>
+  <div class="control-card">
+    <label>الإبداعية <span class="val" id="tmpv">0.7</span></label>
+    <input type="range" min="0.1" max="1.5" value="0.7" step="0.05"
+      oninput="tmpv.textContent=parseFloat(this.value).toFixed(2)" id="tmp">
+  </div>
+  <div class="control-card" style="flex:2">
+    <label>System Prompt</label>
+    <input type="text" id="sys" value="أنت مساعد ذكاء اصطناعي مفيد ومتخصص. أجب دائماً بالعربية بشكل واضح ومختصر.">
+  </div>
+</div>
+
+<div class="info-bar">
+  <span>النموذج: <b>GPT-4o (Pollinations AI)</b></span>
+  <span>بدون توكن: <b style="color:#34d399">✅ مجاني</b></span>
+  <span>الترخيص: <b>Apache 2.0</b></span>
+</div>
+
+<script>
+const API = "https://text.pollinations.ai/openai";
+let history = [];
+
+function fill(btn) {
+  document.getElementById('inp').value = btn.textContent.trim();
+  document.getElementById('inp').focus();
+}
+
+function addMsg(text, role) {
+  const box = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'msg ' + role;
+  el.textContent = text;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+  return el;
+}
+
+async function send() {
+  const inp = document.getElementById('inp');
+  const btn = document.getElementById('send');
+  const text = inp.value.trim();
+  if (!text) return;
+
+  addMsg(text, 'user');
+  history.push({ role: 'user', content: text });
+  inp.value = '';
+  inp.style.height = 'auto';
+  btn.disabled = true;
+
+  const typing = addMsg('يكتب...', 'bot typing');
+
+  try {
+    const sys  = document.getElementById('sys').value;
+    const mt   = parseInt(document.getElementById('mt').value);
+    const tmp  = parseFloat(document.getElementById('tmp').value);
+    const msgs = [{ role: 'system', content: sys }, ...history];
+
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'openai-large', messages: msgs,
+        max_tokens: mt, temperature: tmp, stream: false })
+    });
+
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    const data  = await res.json();
+    const reply = data.choices[0].message.content;
+    typing.textContent = reply;
+    typing.classList.remove('typing');
+    history.push({ role: 'assistant', content: reply });
+
+  } catch(e) {
+    typing.textContent = '⚠️ خطأ في الاتصال: ' + e.message;
+    typing.style.color = '#f87171';
+    typing.classList.remove('typing');
+  } finally {
+    btn.disabled = false;
+    inp.focus();
+  }
+}
+
+document.getElementById('inp').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+document.getElementById('inp').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+</script>
+</body>
+</html>
