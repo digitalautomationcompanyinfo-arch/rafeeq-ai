@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { supabase, getUser, updateXP } from './data/db';
+import { supabase, getUser, updateXP, createChatSession, getChatSessions, getChatMessages, addChatMessage } from './data/db';
 
 type Level = 1 | 2 | 3;
 
@@ -116,7 +116,7 @@ const MCQList = ({ data }: { data: {q: string, options: string[], correctIndex: 
       </div>
 
       {showExplanation && (
-        <div className={\`p-4 rounded-xl text-sm leading-relaxed mb-4 \${selectedOption === currentQuestion.correctIndex ? 'bg-green-100 text-green-900 border border-green-200' : 'bg-amber-50 text-amber-900 border border-amber-200'}\`}>
+        <div className={`p-4 rounded-xl text-sm leading-relaxed mb-4 ${selectedOption === currentQuestion.correctIndex ? 'bg-green-100 text-green-900 border border-green-200' : 'bg-amber-50 text-amber-900 border border-amber-200'}`}>
           <strong className="block mb-1">{selectedOption === currentQuestion.correctIndex ? '✅ إجابة صحيحة!' : '❌ إجابة خاطئة!'}</strong>
           <span className="font-medium text-xs">الشرح: </span> {currentQuestion.explanation}
         </div>
@@ -133,7 +133,7 @@ const MCQList = ({ data }: { data: {q: string, options: string[], correctIndex: 
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chat' | 'code'>('chat');
-  const [sidebarTab, setSidebarTab] = useState<'system' | 'profile'>('profile');
+  const [sidebarTab, setSidebarTab] = useState<'history' | 'system' | 'profile'>('profile');
   const [xp, setXp] = useState(0);
   const [streak, setStreak] = useState(0);
   const [isTimerActive, setIsTimerActive] = useState(false);
@@ -141,6 +141,9 @@ export default function App() {
   
   const [session, setSession] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [chatSessionsList, setChatSessionsList] = useState<any[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -165,6 +168,19 @@ export default function App() {
       setXp(data.xp || 0);
       setStreak(data.streak || 0);
     }
+    const sessions = await getChatSessions(userId);
+    setChatSessionsList(sessions);
+  };
+  
+  const loadChatSession = async (sessionId: string) => {
+      setCurrentSessionId(sessionId);
+      const msgs = await getChatMessages(sessionId);
+      setMessages(msgs.map((m: any) => ({ role: m.role, text: m.content })));
+  };
+  
+  const startNewSession = () => {
+      setCurrentSessionId(null);
+      setMessages([{ role: 'model', text: 'مرحباً بك مجدداً في جلسة جديدة! كيف يمكنني مساعدتك؟' }]);
   };
 
   const handleLogin = async () => {
@@ -197,7 +213,7 @@ export default function App() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingState, setLoadingState] = useState<'idle' | 'routing' | 'querying' | 'verifying'>('idle');
+  const [loadingState, setLoadingState] = useState<'idle' | 'routing' | 'querying' | 'verifying' | 'typing'>('idle');
   const [isListening, setIsListening] = useState(false);
 
   const startListening = () => {
@@ -242,41 +258,99 @@ export default function App() {
     setMessages(prev => [...prev, { role: 'user', text: userText, image: currentImage || undefined }]);
     setIsLoading(true);
     
-    // Simulate orchestration UI states for visual feedback
+    // DB: Create session if it doesn't exist
+    let sid = currentSessionId;
+    if (!sid && session?.user?.id) {
+        try {
+            const newSess = await createChatSession(session.user.id, userText.substring(0, 30) || "صورة مرفقة");
+            sid = newSess.id;
+            setCurrentSessionId(sid);
+            setChatSessionsList(prev => [newSess, ...prev]);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+    
+    // DB: Add user message
+    if (sid) {
+        addChatMessage(sid, 'user', userText || "صورة مرفقة");
+    }
+
+    // Simulate orchestration UI states for visual feedback (faster now)
     if (level === 2 || level === 3) {
       setLoadingState('routing');
-      setTimeout(() => setLoadingState('querying'), 600);
-      setTimeout(() => setLoadingState('verifying'), 2000);
     }
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userText, level, image: currentImage, history: messages })
+        body: JSON.stringify({ message: userText, level, image: currentImage, history: messages, sessionId: sid })
       });
 
       if (!response.ok) {
         throw new Error('Failed to fetch response');
       }
 
-      const data = await response.json();
       setMessages(prev => [...prev, { 
         role: 'model', 
-        text: data.text,
-        isComplex: data.isComplex,
-        modelsUsed: data.modelsUsed,
-        retrievedTopics: data.retrievedTopics
+        text: '',
+        isComplex: false,
+        modelsUsed: [],
+        retrievedTopics: []
       }]);
-      
-      // Add Gamification XP based on query complexity and knowledge retrieval
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
       let earnedXp = 10;
-      if (data.isComplex) earnedXp += 15;
-      if (data.retrievedTopics && data.retrievedTopics.length > 0) earnedXp += 5;
-      
-      setXp(prev => prev + earnedXp);
-      if (session?.user?.id) {
-        updateXP(session.user.id, earnedXp);
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.substring(6).trim();
+            if (!dataStr) continue;
+            try {
+                const data = JSON.parse(dataStr);
+                if (data.metadata) {
+                    if (data.metadata.isComplex) earnedXp += 15;
+                    if (data.metadata.retrievedTopics && data.metadata.retrievedTopics.length > 0) earnedXp += 5;
+                    setMessages(prev => {
+                        const newMsg = [...prev];
+                        const last = newMsg[newMsg.length - 1];
+                        last.isComplex = data.metadata.isComplex;
+                        last.modelsUsed = data.metadata.modelsUsed;
+                        last.retrievedTopics = data.metadata.retrievedTopics;
+                        return newMsg;
+                    });
+                } else if (data.text) {
+                    setLoadingState('typing');
+                    fullText += data.text;
+                    setMessages(prev => {
+                        const newMsg = [...prev];
+                        newMsg[newMsg.length - 1].text = fullText;
+                        return newMsg;
+                    });
+                } else if (data.done) {
+                    setXp(prev => prev + earnedXp);
+                    if (session?.user?.id) {
+                        updateXP(session.user.id, earnedXp);
+                    }
+                    if (sid) {
+                        addChatMessage(sid, 'model', fullText);
+                    }
+                }
+            } catch (e) {
+                console.error("Error parsing stream chunk", e);
+            }
+          }
+        }
       }
 
     } catch (error) {
@@ -440,18 +514,47 @@ if __name__ == "__main__":
 `;
 
   const renderMessageContent = (text: string) => {
+    let displayText = text;
+    let thinkContent = null;
+    let isThinking = false;
+
+    // Parse <think> blocks (completed or streaming)
+    const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
+    if (thinkMatch) {
+      thinkContent = thinkMatch[1].trim();
+      displayText = text.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+    } else {
+      const streamingThinkMatch = text.match(/<think>([\s\S]*?)$/);
+      if (streamingThinkMatch) {
+        thinkContent = streamingThinkMatch[1].trim();
+        displayText = text.replace(/<think>[\s\S]*?$/, '').trim();
+        isThinking = true; // Still streaming the thought
+      }
+    }
+
+    const ThinkUI = thinkContent ? (
+      <div className="mb-4 bg-slate-100/70 border border-slate-200 rounded-xl p-4 text-xs text-slate-500 font-medium">
+        <div className="flex items-center gap-2 mb-2 font-bold text-slate-600">
+          <BrainCircuit className={`w-4 h-4 ${isThinking ? 'animate-pulse text-indigo-500' : ''}`} />
+          <span>تفكير واستدلال رفيق {isThinking && '...'}</span>
+        </div>
+        <div className="whitespace-pre-wrap leading-relaxed opacity-80">{thinkContent}</div>
+      </div>
+    ) : null;
+
     // Check for Flashcards
-    const flashcardsMatch = text.match(/\[FLASHCARDS\]([\s\S]*?)\[\/FLASHCARDS\]/);
+    const flashcardsMatch = displayText.match(/\[FLASHCARDS\]([\s\S]*?)\[\/FLASHCARDS\]/);
     if (flashcardsMatch) {
       try {
         const jsonStr = flashcardsMatch[1].trim();
         const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
         const flashcards = JSON.parse(cleanJson);
-        const textBefore = text.split(/\[FLASHCARDS\][\s\S]*?\[\/FLASHCARDS\]/)[0].trim();
-        const textAfter = text.split(/\[FLASHCARDS\][\s\S]*?\[\/FLASHCARDS\]/)[1]?.trim();
+        const textBefore = displayText.split(/\[FLASHCARDS\][\s\S]*?\[\/FLASHCARDS\]/)[0].trim();
+        const textAfter = displayText.split(/\[FLASHCARDS\][\s\S]*?\[\/FLASHCARDS\]/)[1]?.trim();
         
         return (
           <>
+            {ThinkUI}
             {textBefore && <div className="markdown-body prose prose-slate prose-sm rtl:prose-invert max-w-none mb-4"><Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{textBefore}</Markdown></div>}
             <FlashcardList data={flashcards} />
             {textAfter && <div className="markdown-body prose prose-slate prose-sm rtl:prose-invert max-w-none mt-4"><Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{textAfter}</Markdown></div>}
@@ -463,17 +566,18 @@ if __name__ == "__main__":
     }
 
     // Check for MCQ
-    const mcqMatch = text.match(/\[MCQ\]([\s\S]*?)\[\/MCQ\]/);
+    const mcqMatch = displayText.match(/\[MCQ\]([\s\S]*?)\[\/MCQ\]/);
     if (mcqMatch) {
       try {
         const jsonStr = mcqMatch[1].trim();
         const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
         const mcqData = JSON.parse(cleanJson);
-        const textBefore = text.split(/\[MCQ\][\s\S]*?\[\/MCQ\]/)[0].trim();
-        const textAfter = text.split(/\[MCQ\][\s\S]*?\[\/MCQ\]/)[1]?.trim();
+        const textBefore = displayText.split(/\[MCQ\][\s\S]*?\[\/MCQ\]/)[0].trim();
+        const textAfter = displayText.split(/\[MCQ\][\s\S]*?\[\/MCQ\]/)[1]?.trim();
         
         return (
           <>
+            {ThinkUI}
             {textBefore && <div className="markdown-body prose prose-slate prose-sm rtl:prose-invert max-w-none mb-4"><Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{textBefore}</Markdown></div>}
             <MCQList data={mcqData} />
             {textAfter && <div className="markdown-body prose prose-slate prose-sm rtl:prose-invert max-w-none mt-4"><Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{textAfter}</Markdown></div>}
@@ -485,9 +589,12 @@ if __name__ == "__main__":
     }
 
     return (
-      <div className="markdown-body prose prose-slate prose-sm rtl:prose-invert max-w-none">
-        <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{text}</Markdown>
-      </div>
+      <>
+        {ThinkUI}
+        <div className="markdown-body prose prose-slate prose-sm rtl:prose-invert max-w-none">
+          <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{displayText}</Markdown>
+        </div>
+      </>
     );
   };
 
@@ -564,6 +671,9 @@ if __name__ == "__main__":
             <aside className="w-80 bg-white border-l border-slate-200 flex flex-col shrink-0 hidden md:flex h-full">
               <div className="flex border-b border-slate-200 shrink-0">
                 <button 
+                  onClick={() => setSidebarTab('history')} 
+                  className={`flex-1 py-4 text-xs font-bold transition-colors ${sidebarTab === 'history' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/30' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>سجل المحادثات</button>
+                <button 
                   onClick={() => setSidebarTab('profile')} 
                   className={`flex-1 py-4 text-xs font-bold transition-colors ${sidebarTab === 'profile' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/30' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>ملفي التعليمي</button>
                 <button 
@@ -572,7 +682,35 @@ if __name__ == "__main__":
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 flex flex-col">
-                {sidebarTab === 'profile' ? (
+                {sidebarTab === 'history' ? (
+                  <div className="flex flex-col h-full gap-4">
+                    <button 
+                      onClick={startNewSession}
+                      className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-3 rounded-xl shadow-md hover:bg-blue-700 transition-colors"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      محادثة جديدة
+                    </button>
+                    
+                    <div className="mt-4 flex flex-col gap-2">
+                      <h3 className="text-xs font-bold text-slate-500 mb-2">المحادثات السابقة</h3>
+                      {chatSessionsList.length === 0 ? (
+                        <p className="text-xs text-slate-400 text-center py-4">لا توجد محادثات سابقة.</p>
+                      ) : (
+                        chatSessionsList.map((s, idx) => (
+                          <button
+                            key={s.id || idx}
+                            onClick={() => loadChatSession(s.id)}
+                            className={`text-right p-3 rounded-xl border text-sm font-medium transition-colors ${currentSessionId === s.id ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-white border-slate-100 hover:border-slate-300 text-slate-600'}`}
+                          >
+                            <div className="truncate">{s.title || 'محادثة'}</div>
+                            <div className="text-[10px] text-slate-400 mt-1">{new Date(s.updated_at).toLocaleDateString('ar-EG')}</div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : sidebarTab === 'profile' ? (
                   <div className="flex flex-col h-full gap-6">
                     {/* XP & Level Block */}
                     <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden">

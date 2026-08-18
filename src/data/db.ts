@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 
 // يمكنك الحصول على هذه الروابط من لوحة تحكم Supabase
 // ويجب وضعها في ملف .env الخاص بك
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key';
+const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co';
+const supabaseKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key';
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -55,4 +55,51 @@ export const updateXP = async (id: string, xpToAdd: number) => {
     
   if (error) console.error("Error updating XP:", error);
   return data;
+};
+
+// ============================================================================
+// دوال إدارة جلسات الدردشة (Chat Sessions)
+// ============================================================================
+
+export const createChatSession = async (userId: string, title: string) => {
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .insert([{ user_id: userId, title }])
+    .select()
+    .single();
+  if (error) console.error("Error creating session:", error);
+  return data;
+};
+
+export const getChatSessions = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+  if (error) console.error("Error fetching sessions:", error);
+  return data || [];
+};
+
+export const getChatMessages = async (sessionId: string) => {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+  if (error) console.error("Error fetching messages:", error);
+  return data || [];
+};
+
+export const addChatMessage = async (sessionId: string, role: 'user' | 'model', content: string) => {
+  const { error } = await supabase
+    .from('messages')
+    .insert([{ session_id: sessionId, role, content }]);
+    
+  if (error) {
+      console.error("Error adding message:", error);
+  } else {
+      // Update session timestamp
+      await supabase.from('chat_sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId);
+  }
 };

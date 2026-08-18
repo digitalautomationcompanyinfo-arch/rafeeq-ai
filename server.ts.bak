@@ -7,7 +7,7 @@ import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedroc
 import OpenAI from "openai";
 import { knowledgeBase } from "./src/data/knowledge.ts";
 import { OAuth2Client } from "google-auth-library";
-import { upsertUser, getUser, updateXP, supabase } from "./src/data/db.ts";
+import { upsertUser, getUser, updateXP } from "./src/data/db.ts";
 
 const app = express();
 const PORT = 3000;
@@ -55,9 +55,9 @@ const activeSessions = new Map<string, any[]>();
   // أ. محرك AWS Bedrock (للوصول إلى Claude 3)
   const callAWSBedrock = async (prompt: string): Promise<string> => {
     if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-      return new Promise(r => setTimeout(() => r(`[AWS Bedrock / Claude 3]: (تمت المحاكاة) - تحليل منطقي...`), 50));
+      // Lazy initialization fallback to prevent crashes if keys aren't set in dev env
+      return new Promise(r => setTimeout(() => r(`[AWS Bedrock / Claude 3]: (تمت المحاكاة لعدم توفر مفاتيح AWS) - تحليل منطقي ولغوي عميق للسؤال: "${prompt.substring(0, 30)}..."`), 800));
     }
-    // ... rest of the code ...
     try {
       const client = new BedrockRuntimeClient({ region: process.env.AWS_REGION || "us-east-1" });
       const payload = {
@@ -83,7 +83,7 @@ const activeSessions = new Map<string, any[]>();
   // ب. محرك DeepSeek (عبر OpenAI Compatible SDK)
   const callDeepSeek = async (prompt: string): Promise<string> => {
     if (!process.env.DEEPSEEK_API_KEY) {
-      return new Promise(r => setTimeout(() => r(`[DeepSeek API]: (تمت المحاكاة) - تحليل برمجي.`), 50));
+      return new Promise(r => setTimeout(() => r(`[DeepSeek API]: (تمت المحاكاة لعدم توفر مفتاح DeepSeek) - تحليل برمجي/رياضي وخوارزمي.`), 1000));
     }
     try {
       const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY });
@@ -101,7 +101,7 @@ const activeSessions = new Map<string, any[]>();
   // ج. محرك OpenAI (GPT-4o)
   const callOpenAI = async (prompt: string): Promise<string> => {
     if (!process.env.OPENAI_API_KEY) {
-      return new Promise(r => setTimeout(() => r(`[OpenAI GPT-4o]: (تمت المحاكاة) - تصور هندسي.`), 50));
+      return new Promise(r => setTimeout(() => r(`[OpenAI GPT-4o]: (تمت المحاكاة لعدم توفر مفتاح OpenAI) - تحليل القدرات المعقدة وتكوين تصور هندسي.`), 1200));
     }
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -119,7 +119,7 @@ const activeSessions = new Map<string, any[]>();
   // د. محرك Groq (Llama 3 المجاني والسريع)
   const callGroq = async (prompt: string): Promise<string> => {
     if (!process.env.GROQ_API_KEY) {
-      return new Promise(r => setTimeout(() => r(`[Groq / Llama-3]: (محاكاة) تحليل سريع.`), 50));
+      return new Promise(r => setTimeout(() => r(`[Groq / Llama-3]: (محاكاة مجانية) تحليل سريع للبيانات والمنطق باستخدام نماذج مفتوحة المصدر.`), 500));
     }
     try {
       const openai = new OpenAI({ baseURL: 'https://api.groq.com/openai/v1', apiKey: process.env.GROQ_API_KEY });
@@ -136,7 +136,7 @@ const activeSessions = new Map<string, any[]>();
   // هـ. محرك Hugging Face (Mistral مفتوح المصدر)
   const callHuggingFace = async (prompt: string): Promise<string> => {
     if (!process.env.HUGGINGFACE_API_KEY) {
-       return new Promise(r => setTimeout(() => r(`[Hugging Face]: (محاكاة) استنتاج سياقي.`), 50));
+       return new Promise(r => setTimeout(() => r(`[Hugging Face / Mistral]: (محاكاة مجانية) استنتاج سياقي وربط معلومات.`), 600));
     }
     try {
       const response = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
@@ -154,7 +154,7 @@ const activeSessions = new Map<string, any[]>();
   // و. محرك OpenRouter (Gemma 2 مفتوح المصدر)
   const callOpenRouter = async (prompt: string): Promise<string> => {
     if (!process.env.OPENROUTER_API_KEY) {
-       return new Promise(r => setTimeout(() => r(`[OpenRouter / Gemma 2]: (محاكاة) تحليل منطقي.`), 50));
+       return new Promise(r => setTimeout(() => r(`[OpenRouter / Gemma 2]: (محاكاة مجانية) تحليل منطقي مفتوح المصدر.`), 700));
     }
     try {
       const openai = new OpenAI({ baseURL: 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY });
@@ -171,7 +171,7 @@ const activeSessions = new Map<string, any[]>();
   // ز. محرك Cohere (Command R المخصص للتعليم والاسترجاع)
   const callCohere = async (prompt: string): Promise<string> => {
     if (!process.env.COHERE_API_KEY) {
-       return new Promise(r => setTimeout(() => r(`[Cohere / Command R]: (محاكاة) مساعدة وتدقيق.`), 50));
+       return new Promise(r => setTimeout(() => r(`[Cohere / Command R]: (محاكاة مجانية) مساعدة وتدقيق تعليمي فعال.`), 800));
     }
     try {
       const response = await fetch("https://api.cohere.ai/v1/chat", {
@@ -192,7 +192,27 @@ const activeSessions = new Map<string, any[]>();
 
   // ح. محرك QLoRA MVP — النموذج المُدرَّب الخاص بالمنصة (عبر Pollinations AI مجاناً)
   const callQLoRAMVP = async (prompt: string): Promise<string> => {
-    return new Promise(r => setTimeout(() => r(`[رفيق AI / QLoRA]: (محاكاة) تحليل سريع لدعم الطالب.`), 50));
+    try {
+      const response = await fetch("https://text.pollinations.ai/openai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "openai-large",
+          messages: [
+            { role: "system", content: "أنت 'رفيق'، نموذج ذكاء اصطناعي مُدرَّب خصيصاً لمنصة ليرنوف. تخصصك مساعدة الطلاب العرب في الفهم والاستيعاب." },
+            { role: "user",   content: prompt }
+          ],
+          max_tokens: 600,
+          temperature: 0.6,
+          stream: false
+        })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      return `[QLoRA MVP / رفيق AI]: ${data.choices[0].message.content}`;
+    } catch (e: any) {
+      return `[QLoRA MVP / محاكاة]: نموذج رفيق المُدرَّب يُحلل: "${prompt.substring(0, 40)}..." — تحليل سياقي تعليمي متخصص.`;
+    }
   };
 
   // ==============================================================================
@@ -267,20 +287,13 @@ const activeSessions = new Map<string, any[]>();
       const queryText = message || "قم بتحليل هذه الصورة المرفقة واستنتج المطلوب.";
       
       let baseInstruction = "أنت 'رفيق' (Rafeeq)، المساعد الذكي والأخ الأكبر للطلاب في منصة 'ليرنوف' (Learnov).\n" +
-        "أنت متخصص وداعم بقوة لطلاب المناهج السودانية في كافة المراحل (الأساس، المتوسطة، الثانوية). ومهمتك تقديم الدعم الأكاديمي، الإرشاد الجامعي، والدعم النفسي (مواجهة رهاب الامتحانات).\n" +
-        "شخصيتك: أنت معلم ملهم، أخ أكبر داعم، محلل دقيق، ومرشد نفسي وأكاديمي.\n\n" +
-        "قواعد التفكير المنطقي والاستدلال (Reasoning & Logic Rules):\n" +
-        "1. قبل الإجابة على أي سؤال، فكر منطقياً وضع أفكارك وتحليلاتك باللغة العربية داخل وسوم <think> ... </think>.\n" +
-        "2. استخدم القياس والاستقراء وتقنية 'فاينمان' (تبسيط المعقد كأنه لطفل) عند شرح المفاهيم.\n" +
-        "3. استخدم 'الطريقة السقراطية' (Socratic Method): وجّه الطالب لاكتشاف الحل بنفسه.\n" +
-        "4. انصح الطلاب بتقنيات المذاكرة الحديثة كالتكرار المتباعد وطريقة بومودورو، وشجعهم باستمرار.\n" +
-        "5. بعد إغلاق وسم </think>، اكتب إجابتك النهائية للطالب بأسلوب يشع إيجابية ومودة.\n\n" +
+        "شخصيتك: أنت معلم ملهم، ذكي، داعم. في المسائل المعقدة، استخدم 'الطريقة السقراطية' (Socratic Method). لا تعطِ الإجابة المباشرة فوراً، بل قدم تلميحات ووجه الطالب خطوة بخطوة ليصل للحل بنفسه.\n\n" +
         "تنسيقات الإخراج الإلزامية:\n" +
-        "1. لإنشاء بطاقات استذكار، استخدم:\n" +
+        "1. إذا طلب الطالب (بطاقات استذكار) أو (Flashcards)، يجب إرجاعها حصراً بهذا التنسيق الحرفي:\n" +
         "[FLASHCARDS]\n[{\"q\": \"السؤال/المصطلح\", \"a\": \"الجواب/التعريف\"}]\n[/FLASHCARDS]\n\n" +
-        "2. لإنشاء اختبار، استخدم:\n" +
+        "2. إذا طلب الطالب (اختبار قصير) أو (MCQ)، يجب إرجاعها حصراً بهذا التنسيق الحرفي:\n" +
         "[MCQ]\n[{\"q\": \"نص السؤال\", \"options\": [\"خيار 1\", \"خيار 2\", \"خيار 3\", \"خيار 4\"], \"correctIndex\": 0, \"explanation\": \"شرح الجواب\"}]\n[/MCQ]\n\n" +
-        "ملاحظات: استخدم Markdown و LaTeX للمعادلات.";
+        "ملاحظات: استخدم تنسيق Markdown، واستخدم صيغة LaTeX للمعادلات الرياضية.";
 
       
       const frustrationKeywords = ['صعب', 'لم افهم', 'معقد', 'مستحيل', 'كيف', 'لا استطيع', 'لا أفهم', 'شرح'];
@@ -288,75 +301,26 @@ const activeSessions = new Map<string, any[]>();
         baseInstruction += "\n\n[تنبيه هام: الطالب يشعر بالإحباط أو يواجه صعوبة. كن شديد التعاطف، استخدم لغة محفزة جداً (مثل: 'لا تقلق، هذا طبيعي..')، وبسّط الشرح لأقصى درجة ممكنة مع أمثلة من واقع الحياة].";
       }
 
-      // [Feature] True RAG via Supabase pgvector
+      // removed
+      // removed
       if (message) {
-        try {
-          // 1. Generate Embedding for user query
-          const embedRes = await ai.models.embedContent({
-             model: 'text-embedding-004',
-             contents: message
-          });
-          const query_embedding = embedRes.embeddings[0].values;
-          
-          // 2. Semantic Search in Supabase
-          const { data: documents, error } = await supabase.rpc('match_documents', {
-             query_embedding,
-             match_threshold: 0.5,
-             match_count: 3
-          });
-          
-          if (!error && documents && documents.length > 0) {
-              for (const doc of documents) {
-                  retrievedContext += doc.content + "\n";
-                  retrievedTopics.push(doc.topic);
-              }
-          }
-        } catch (e) {
-          // Fallback to basic string search if supabase fails
-          let matchCount = 0;
-          for (const [key, val] of Object.entries(knowledgeBase)) {
-            if (message.includes(key)) {
-              retrievedContext += val + "\n";
-              retrievedTopics.push(key);
-              matchCount++;
-              if (matchCount >= 3) break; 
-            }
+        let matchCount = 0;
+        for (const [key, val] of Object.entries(knowledgeBase)) {
+          if (message.includes(key)) {
+            retrievedContext += val + "\n";
+            retrievedTopics.push(key);
+            matchCount++;
+            if (matchCount >= 3) break; // Limit context to avoid prompt explosion
           }
         }
       }
       if (retrievedContext) baseInstruction += `\n[قاعدة المعرفة الخاصة بمنصة ليرنوف]:\n${retrievedContext}`;
 
-      // Setup SSE Headers
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      });
-
-      const generateStreamWithFallback = async (params: any) => {
-        try {
-          const responseStream = await ai.models.generateContentStream({ ...params, model: "gemini-3.7-flash" });
-          for await (const chunk of responseStream) {
-            if (chunk.text) {
-              res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`);
-              finalResponseText += chunk.text;
-            }
-          }
-        } catch (err: any) {
-          const fallbackStream = await ai.models.generateContentStream({ ...params, model: "gemini-3.1-flash-lite" });
-          for await (const chunk of fallbackStream) {
-            if (chunk.text) {
-              res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`);
-              finalResponseText += chunk.text;
-            }
-          }
-        }
-      };
-
       if (level === 3) {
+        // تفعيل شبكة الشركات الكبرى (Enterprise Network)
         usedModels = ["Gemini 2.5 Pro", "AWS Bedrock (Claude 3)", "DeepSeek V3", "OpenAI GPT-4o"];
-        res.write(`data: ${JSON.stringify({ metadata: { isComplex: true, modelsUsed: usedModels, retrievedTopics } })}\n\n`);
 
+        // جلب الإجابات من جميع النماذج بالتوازي باستخدام الـ SDKs الحقيقية (أو محاكاتها إذا غابت المفاتيح)
         const [awsOutput, deepseekOutput, openaiOutput] = await Promise.all([
           callAWSBedrock(queryText),
           callDeepSeek(queryText),
@@ -366,7 +330,7 @@ const activeSessions = new Map<string, any[]>();
         const synthesisPrompt = `
           تعليمات النظام: ${baseInstruction}
           
-          أنت "رفيق"، وتعمل الآن كمدقق حقائق ومحلل رئيسي (Fact-Checker) ومعلم سقراطي (Socratic Teacher).
+          أنت "رفيق"، وتعمل الآن كمدقق حقائق ومحلل رئيسي (Fact-Checker).
           سؤال الطالب: "${queryText}"
 
           إليك تحليلات النماذج العالمية المساعدة (الشبكة المؤسسية):
@@ -374,79 +338,118 @@ const activeSessions = new Map<string, any[]>();
           2. DeepSeek API: ${deepseekOutput}
           3. OpenAI GPT-4o: ${openaiOutput}
 
-          ${image ? "ملاحظة: لقد قام الطالب برفع صورة." : ""}
-          قم بفلترة هذه المعلومات، تحقق من صحتها بدقة متناهية، واكتب إجابة نهائية شاملة وسريعة بأسلوبك (أخ أكبر ومعلم داعم).
-          تأكد من أن تكون دقيقاً جداً ولا تطيل بلا داعٍ لتوفير الوقت.
+          ${image ? "ملاحظة: لقد قام الطالب برفع صورة، وقد قمت (Gemini) برؤيتها ضمن سياق المحادثة الأصلي." : ""}
+
+          قم بفلترة هذه المعلومات، تحقق من صحتها، واكتب إجابة نهائية متكاملة ودقيقة للطالب بأسلوبك (أخ أكبر ومعلم داعم).
+          تذكر: لا تذكر أسماء النماذج في ردك. التزم تماماً بتعليمات التنسيق (MCQ/Flashcards) إذا طلبها الطالب.
         `;
 
-        await generateStreamWithFallback({
+        const draftResponse = await generateWithFallback({
           contents: chatHistory.slice(0, -1).concat([{ role: "user", parts: [{ text: synthesisPrompt }] }]),
+          config: { temperature: 0.4 } 
+        });
+
+        const draftText = draftResponse.text || "";
+
+        const reflectionPrompt = `
+          تعليمات النظام: ${baseInstruction}
+          
+          قمت للتو بكتابة هذه المسودة كإجابة للطالب:
+          """
+          ${draftText}
+          """
+          
+          مهمتك الآن هي النقد الذاتي (Self-Reflection) وتحسين المسودة:
+          1. إذا كانت المسألة معقدة: هل الإجابة سقراطية وتوجه الطالب أم أنها أعطت الحل المباشر؟ (عدلها لتكون سقراطية أكثر).
+          2. هل التنسيق صحيح 100% (إذا كان المطلوب Flashcards أو MCQ)؟
+          3. هل النبرة داعمة، واضحة، وخالية من أسماء نماذج الذكاء الاصطناعي؟
+          
+          اكتب الإجابة النهائية المحسنة الآن (النتيجة النهائية فقط بدون أي مقدمات عن النقد).
+        `;
+
+        const finalResponse = await generateWithFallback({
+          contents: chatHistory.slice(0, -1).concat([{ role: "user", parts: [{ text: reflectionPrompt }] }]),
           config: { temperature: 0.3 } 
         });
 
+        finalResponseText = finalResponse.text || "";
+
       } else if (level === 2) {
+        // تفعيل الشبكة المجانية ومفتوحة المصدر (Free / Open Source Network)
         usedModels = ["Gemini 2.5 Flash", "Groq (Llama 3)", "Hugging Face (Mistral)", "OpenRouter (Gemma 2)", "Cohere (Command R)", "رفيق AI (QLoRA MVP)"];
-        res.write(`data: ${JSON.stringify({ metadata: { isComplex: true, modelsUsed: usedModels, retrievedTopics } })}\n\n`);
 
         const [groqOutput, hfOutput, openRouterOutput, cohereOutput, qloraOutput] = await Promise.all([
-          callGroq(queryText), callHuggingFace(queryText), callOpenRouter(queryText), callCohere(queryText), callQLoRAMVP(queryText)
+          callGroq(queryText),
+          callHuggingFace(queryText),
+          callOpenRouter(queryText),
+          callCohere(queryText),
+          callQLoRAMVP(queryText)
         ]);
 
         const synthesisPrompt = `
           تعليمات النظام: ${baseInstruction}
+          
+          أنت "رفيق"، وتعمل الآن كمدقق حقائق ومحلل رئيسي (Fact-Checker).
           سؤال الطالب: "${queryText}"
-          إليك تحليلات النماذج المجانية:
-          1. Groq: ${groqOutput}
-          2. Hugging Face: ${hfOutput}
-          3. OpenRouter: ${openRouterOutput}
-          4. Cohere: ${cohereOutput}
-          5. رفيق AI: ${qloraOutput}
-          قم بفلترة هذه المعلومات واكتب إجابة نهائية.
+
+          إليك تحليلات النماذج المجانية والمفتوحة المصدر:
+          1. Groq (Llama 3): ${groqOutput}
+          2. Hugging Face (Mistral): ${hfOutput}
+          3. OpenRouter (Gemma 2): ${openRouterOutput}
+          4. Cohere (Command R): ${cohereOutput}
+          5. رفيق AI (QLoRA MVP — النموذج التعليمي المُدرَّب): ${qloraOutput}
+
+          ${image ? "ملاحظة: لقد قام الطالب برفع صورة، وقد قمت (Gemini) برؤيتها ضمن سياق المحادثة الأصلي." : ""}
+
+          قم بفلترة هذه المعلومات، تحقق من صحتها، واكتب إجابة نهائية متكاملة ودقيقة للطالب بأسلوبك (أخ أكبر ومعلم داعم).
+          تذكر: لا تذكر أسماء النماذج في ردك. التزم تماماً بتعليمات التنسيق (MCQ/Flashcards) إذا طلبها الطالب.
         `;
 
-        await generateStreamWithFallback({
+        const response = await generateWithFallback({
+          
           contents: chatHistory.slice(0, -1).concat([{ role: "user", parts: [{ text: synthesisPrompt }] }]),
           config: { temperature: 0.5 } 
         });
 
+        finalResponseText = response.text || "";
+
       } else {
-        res.write(`data: ${JSON.stringify({ metadata: { isComplex: false, modelsUsed: usedModels, retrievedTopics } })}\n\n`);
-        await generateStreamWithFallback({
+        // المسار المباشر
+        const response = await generateWithFallback({
+          
           contents: chatHistory,
-          config: { systemInstruction: baseInstruction, temperature: 0.7 }
+          config: {
+            systemInstruction: baseInstruction,
+            temperature: 0.7,
+          }
         });
+        finalResponseText = response.text || "";
       }
 
       chatHistory.push({ role: "model", parts: [{ text: finalResponseText }] });
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-      res.end();
+
+      res.json({ 
+        text: finalResponseText,
+        isComplex: level > 1,
+        modelsUsed: usedModels,
+        retrievedTopics
+      });
 
     } catch (error: any) {
-      console.error("Chat API Error:", error);
+      
       let fallbackText = "عذراً، أواجه ضغطاً عالياً حالياً أو تعذر الاتصال بالخادم. ";
       if (retrievedContext) {
         fallbackText += "ولكن بناءً على موسوعة ليرنوف، إليك ما وجدته حول سؤالك:\n\n" + retrievedContext;
       } else {
         fallbackText += "يرجى المحاولة مرة أخرى بعد دقيقة.";
       }
-      
-      const { sessionId = "default_session" } = req.body || {};
-      if (activeSessions.has(sessionId)) {
-          activeSessions.get(sessionId)!.push({ role: "model", parts: [{ text: fallbackText }] });
-      }
-      
-      if (!res.headersSent) {
-          res.json({
-            text: fallbackText,
-            isComplex: false,
-            modelsUsed: ["Local Knowledge Base (Fallback)"],
-            retrievedTopics
-          });
-      } else {
-          res.write(`data: ${JSON.stringify({ text: fallbackText })}\n\n`);
-          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-          res.end();
-      }
+      chatHistory.push({ role: "model", parts: [{ text: fallbackText }] });
+      return res.json({
+        text: fallbackText,
+        isComplex: false,
+        modelsUsed: ["Local Knowledge Base (Fallback)"],
+        retrievedTopics
+      });
     }
   });
 
