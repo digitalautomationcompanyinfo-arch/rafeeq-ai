@@ -11,8 +11,8 @@ import { knowledgeBase } from "./_knowledge.js";
 
   // ==============================================================================
   // 2. الذاكرة السياقية (Contextual Memory)
+  // تم النقل إلى الـ Request Body للحفاظ على استقلالية كل جلسة (Stateless)
   // ==============================================================================
-  let chatHistory: any[] = [];
 
   // ==============================================================================
   // 3. التكامل مع موارد الشركات الكبرى (Enterprise API Integrations)
@@ -188,11 +188,20 @@ export default async function handler(req: any, res: any) {
     let retrievedContext = "";
     let retrievedTopics: string[] = [];
     try {
-      const { message, level, reset, image } = req.body;
+      const { message, level, reset, image, history = [] } = req.body;
       
       if (reset) {
-        chatHistory = [];
         return res.json({ text: "تم تفريغ الذاكرة." });
+      }
+
+      // تحويل الرسائل القادمة من الـ Frontend إلى تنسيق Gemini
+      let chatHistory = history.map((msg: any) => ({
+        role: msg.role === "user" ? "user" : "model",
+        parts: [{ text: msg.text }]
+      }));
+      // Gemini API requires history to start with a 'user' role
+      if (chatHistory.length > 0 && chatHistory[0].role === "model") {
+        chatHistory.shift();
       }
       
       const apiKey = process.env.GEMINI_API_KEY;

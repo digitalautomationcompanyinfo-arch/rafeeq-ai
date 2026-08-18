@@ -145,7 +145,7 @@ export default function App() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userText, level, image: currentImage })
+        body: JSON.stringify({ message: userText, level, image: currentImage, history: messages })
       });
 
       if (!response.ok) {
