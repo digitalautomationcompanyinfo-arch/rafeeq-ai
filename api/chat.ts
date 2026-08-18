@@ -1,15 +1,8 @@
 import "dotenv/config";
-import express from "express";
 import { GoogleGenAI } from "@google/genai";
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import OpenAI from "openai";
-import { knowledgeBase } from "../src/data/knowledge";
-
-const app = express();
-const PORT = 3000;
-
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+import { knowledgeBase } from "./_knowledge.js";
 
   // ==============================================================================
   // 1. قاعدة المعرفة (Knowledge Base Simulation / RAG)
@@ -191,7 +184,7 @@ const PORT = 3000;
   // ==============================================================================
   // Main Chat Endpoint
   // ==============================================================================
-  app.post("/api/chat", async (req, res) => {
+export default async function handler(req: any, res: any) {
     let retrievedContext = "";
     let retrievedTopics: string[] = [];
     try {
@@ -381,8 +374,6 @@ const PORT = 3000;
         retrievedTopics
       });
     }
-  });
-
-export default app;
+  }
 
 
