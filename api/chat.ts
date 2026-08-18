@@ -360,8 +360,6 @@ export default async function handler(req: any, res: any) {
         finalResponseText = response.text || "";
       }
 
-      chatHistory.push({ role: "model", parts: [{ text: finalResponseText }] });
-
       res.json({ 
         text: finalResponseText,
         isComplex: level > 1,
@@ -377,7 +375,6 @@ export default async function handler(req: any, res: any) {
       } else {
         fallbackText += "يرجى المحاولة مرة أخرى بعد دقيقة.";
       }
-      chatHistory.push({ role: "model", parts: [{ text: fallbackText }] });
       return res.json({
         text: fallbackText,
         isComplex: false,
