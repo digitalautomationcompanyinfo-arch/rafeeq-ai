@@ -207,7 +207,7 @@ export default function App() {
 
   const [level, setLevel] = useState<Level>(2);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: 'أهلاً بك! أنا **رفيق** (Rafeeq)، المساعد الذكي والمتكامل لمنصة ليرنوف. كيف يمكنني مساعدتك في دراستك اليوم؟' }
+    { role: 'model', text: 'أهلاً بك! أنا **رفيق** (RAFEEG)، المساعد الذكي والمتكامل لمنصة ليرنوف. كيف يمكنني مساعدتك في دراستك اليوم؟' }
   ]);
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -626,7 +626,7 @@ if __name__ == "__main__":
       <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">L</div>
-          <h1 className="text-xl font-bold text-slate-800">ليرنوف <span className="text-blue-600 font-medium">| رفيـق (Rafeeq)</span></h1>
+          <h1 className="text-xl font-bold text-slate-800">ليرنوف <span className="text-blue-600 font-medium">| رفيـق (RAFEEG)</span></h1>
         </div>
         <div className="flex items-center gap-4 text-sm">
           <div className="flex bg-slate-100 p-1 rounded-lg">
