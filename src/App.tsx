@@ -140,7 +140,7 @@ export default function App() {
   const [timeRemaining, setTimeRemaining] = useState(25 * 60);
   
   const [session, setSession] = useState<any>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
   
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [chatSessionsList, setChatSessionsList] = useState<any[]>([]);
@@ -149,6 +149,9 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) fetchUserData(session.user.id);
+      setIsAuthLoading(false);
+    }).catch(err => {
+      console.warn('Supabase auth failed (bypassed):', err);
       setIsAuthLoading(false);
     });
 
@@ -602,24 +605,24 @@ if __name__ == "__main__":
     return <div className="h-screen w-full flex items-center justify-center bg-slate-50 font-bold text-slate-500">جاري التحقق من الحساب...</div>;
   }
 
-  if (!session) {
-    return (
-      <div className="h-screen w-full bg-slate-50 flex items-center justify-center font-sans" dir="rtl">
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-3xl mx-auto mb-6">L</div>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">ليرنوف | رفيق</h1>
-          <p className="text-slate-500 mb-8">قم بتسجيل الدخول بحساب جوجل لبدء تجربة التعلم السقراطي، وحفظ تقدمك الدراسي السحابي.</p>
-          <button 
-            onClick={handleLogin}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2"
-          >
-            <User className="w-5 h-5" />
-            تسجيل الدخول باستخدام جوجل
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // if (!session) {
+  //   return (
+  //     <div className="h-screen w-full bg-slate-50 flex items-center justify-center font-sans" dir="rtl">
+  //       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 max-w-md w-full text-center">
+  //         <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-3xl mx-auto mb-6">L</div>
+  //         <h1 className="text-2xl font-bold text-slate-800 mb-2">ليرنوف | رفيق</h1>
+  //         <p className="text-slate-500 mb-8">قم بتسجيل الدخول بحساب جوجل لبدء تجربة التعلم السقراطي، وحفظ تقدمك الدراسي السحابي.</p>
+  //         <button 
+  //           onClick={handleLogin}
+  //           className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2"
+  //         >
+  //           <User className="w-5 h-5" />
+  //           تسجيل الدخول باستخدام جوجل
+  //         </button>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   return (
     <div className="h-screen w-full bg-slate-50 flex flex-col font-sans overflow-hidden" dir="rtl">
