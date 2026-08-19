@@ -308,6 +308,9 @@ const activeSessions = new Map<string, any[]>();
           const query_embedding = embedRes.embeddings[0].values;
           
           // 2. Semantic Search in Supabase
+          if (process.env.VITE_SUPABASE_URL?.includes('your-project')) {
+            throw new Error("Dummy Supabase URL - skipping to fallback");
+          }
           const { data: documents, error } = await supabase.rpc('match_documents', {
              query_embedding,
              match_threshold: 0.5,

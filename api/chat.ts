@@ -159,6 +159,8 @@ import { knowledgeBase } from "./_knowledge.js";
   // ح. محرك QLoRA MVP — النموذج المُدرَّب الخاص بالمنصة (عبر Pollinations AI مجاناً)
   const callQLoRAMVP = async (prompt: string): Promise<string> => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
       const response = await fetch("https://text.pollinations.ai/openai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -171,8 +173,10 @@ import { knowledgeBase } from "./_knowledge.js";
           max_tokens: 600,
           temperature: 0.6,
           stream: false
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       return `[QLoRA MVP / رفيق AI]: ${data.choices[0].message.content}`;
@@ -360,12 +364,15 @@ export default async function handler(req: any, res: any) {
         finalResponseText = response.text || "";
       }
 
-      res.json({ 
-        text: finalResponseText,
-        isComplex: level > 1,
-        modelsUsed: usedModels,
-        retrievedTopics
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
       });
+      res.write(`data: ${JSON.stringify({ metadata: { isComplex: level > 1, modelsUsed: usedModels, retrievedTopics } })}\n\n`);
+      res.write(`data: ${JSON.stringify({ text: finalResponseText })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
 
     } catch (error: any) {
       
@@ -375,12 +382,15 @@ export default async function handler(req: any, res: any) {
       } else {
         fallbackText += "يرجى المحاولة مرة أخرى بعد دقيقة.";
       }
-      return res.json({
-        text: fallbackText,
-        isComplex: false,
-        modelsUsed: ["Local Knowledge Base (Fallback)"],
-        retrievedTopics
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
       });
+      res.write(`data: ${JSON.stringify({ metadata: { isComplex: false, modelsUsed: ["Local Knowledge Base (Fallback)"], retrievedTopics } })}\n\n`);
+      res.write(`data: ${JSON.stringify({ text: fallbackText })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
     }
   }
 
